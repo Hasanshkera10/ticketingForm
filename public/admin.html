@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin Dashboard | IT Support Tickets</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="admin-shell">
+      <header class="admin-hero">
+        <div class="brand" aria-label="Memories Events Management">
+          <img class="brand-mark" src="./logo4.png" alt="" aria-hidden="true" />
+          <div class="brand-text">
+            <strong>memories</strong>
+            <span>events management</span>
+          </div>
+        </div>
+
+        <div>
+          <p class="eyebrow">IT operations</p>
+          <h1>Ticket Dashboard</h1>
+          <p class="muted">Review, search, filter, and export submitted support requests.</p>
+        </div>
+
+        <a class="admin-link" href="./index.html">Open request form</a>
+      </header>
+
+      <section id="admin-auth-card" class="admin-card">
+        <h2>Admin Access</h2>
+        <p class="muted">Enter your admin token to load submitted tickets.</p>
+        <form id="admin-auth-form" class="admin-auth-form">
+          <label>
+            Admin token
+            <input type="password" name="adminToken" id="admin-token-input" autocomplete="current-password" />
+          </label>
+          <button type="submit">Load dashboard</button>
+          <p id="admin-auth-message" class="message" aria-live="polite"></p>
+        </form>
+      </section>
+
+      <section id="admin-dashboard" class="hidden">
+        <div class="admin-toolbar">
+          <div>
+            <p class="eyebrow">Overview</p>
+            <h2 id="ticket-count-heading">No tickets loaded</h2>
+          </div>
+          <div class="admin-actions">
+            <button type="button" id="refresh-tickets-button" class="secondary-button">Refresh</button>
+            <button type="button" id="export-csv-button">Export CSV</button>
+          </div>
+        </div>
+
+        <div class="stats-grid" aria-label="Ticket summary">
+          <article class="stat-card">
+            <span>Total</span>
+            <strong id="total-count">0</strong>
+          </article>
+          <article class="stat-card">
+            <span>Open</span>
+            <strong id="open-count">0</strong>
+          </article>
+          <article class="stat-card">
+            <span>High/Critical</span>
+            <strong id="urgent-count">0</strong>
+          </article>
+        </div>
+
+        <form id="ticket-filters" class="filters-card">
+          <label>
+            Search
+            <input type="search" id="ticket-search" placeholder="Name, email, department, description..." />
+          </label>
+
+          <label>
+            Priority
+            <select id="priority-filter">
+              <option value="">All priorities</option>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+              <option value="critical">Critical</option>
+            </select>
+          </label>
+        </form>
+
+        <div id="status-tabs" class="status-tabs" aria-label="Filter tickets by status"></div>
+        <p id="admin-message" class="message" aria-live="polite"></p>
+        <div id="tickets-list" class="tickets-list"></div>
+      </section>
+    </main>
+
+    <div id="ticket-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modal-ticket-title">
+      <article class="ticket-modal">
+        <button type="button" id="close-ticket-modal" class="modal-close" aria-label="Close ticket details">Close</button>
+        <p class="eyebrow" id="modal-ticket-reference"></p>
+        <h2 id="modal-ticket-title"></h2>
+        <p id="modal-ticket-meta" class="muted"></p>
+        <div id="modal-ticket-badges" class="ticket-badges"></div>
+        <p id="modal-ticket-description" class="ticket-description"></p>
+        <dl id="modal-ticket-details" class="ticket-details"></dl>
+      </article>
+    </div>
+
+    <script src="./admin.js"></script>
+  </body>
+</html>

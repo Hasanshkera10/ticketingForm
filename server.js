@@ -35,6 +35,11 @@ loadDotEnv();
 
 const PORT = Number(process.env.PORT || 3000);
 const ALLOWED_EMAIL_DOMAIN = (process.env.ALLOWED_EMAIL_DOMAIN || "company.com").toLowerCase();
+const ALLOWED_USER_EMAILS = (process.env.ALLOWED_USER_EMAILS || "")
+  .split(",")
+  .map((email) => email.trim().toLowerCase())
+  .filter(Boolean);
+const ALLOWED_USER_DISPLAY_NAMES = parseAllowedUserDisplayNames(process.env.ALLOWED_USER_DISPLAY_NAMES || "");
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "";
 const SUPABASE_URL = (process.env.SUPABASE_URL || "").replace(/\/+$/, "");
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
@@ -142,6 +147,24 @@ async function readTicketsSupabase() {
   return rows.map(fromDbRow);
 }
 
+async function updateTicketStatusSupabase(ticketId, status) {
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/${SUPABASE_TICKETS_TABLE}?id=eq.${encodeURIComponent(ticketId)}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: SUPABASE_SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      Prefer: "return=minimal",
+    },
+    body: JSON.stringify({ status }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Supabase status update failed (${response.status}): ${text}`);
+  }
+}
+
 async function saveTicket(ticket) {
   if (USE_SUPABASE) {
     await insertTicketSupabase(ticket);
@@ -160,6 +183,23 @@ async function getTickets() {
   return readTickets();
 }
 
+async function updateTicketStatus(ticketId, status) {
+  if (USE_SUPABASE) {
+    await updateTicketStatusSupabase(ticketId, status);
+    return;
+  }
+
+  const tickets = await readTickets();
+  const ticket = tickets.find((item) => item.id === ticketId);
+  if (!ticket) {
+    return false;
+  }
+
+  ticket.status = status;
+  await writeTickets(tickets);
+  return true;
+}
+
 function sendJson(res, statusCode, payload) {
   res.writeHead(statusCode, {
     "Content-Type": "application/json; charset=utf-8",
@@ -173,6 +213,45 @@ function isAllowedEmail(email) {
     .toLowerCase()
     .split("@");
   return parts.length === 2 && parts[1] === ALLOWED_EMAIL_DOMAIN;
+}
+
+function isAllowedUser(email) {
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  if (!isAllowedEmail(normalizedEmail)) return false;
+  return ALLOWED_USER_EMAILS.length === 0 || ALLOWED_USER_EMAILS.includes(normalizedEmail);
+}
+
+function parseAllowedUserDisplayNames(value) {
+  return String(value || "")
+    .split(",")
+    .reduce((names, entry) => {
+      const separatorIndex = entry.indexOf(":");
+      if (separatorIndex <= 0) return names;
+
+      const email = entry.slice(0, separatorIndex).trim().toLowerCase();
+      const displayName = entry.slice(separatorIndex + 1).trim();
+      if (email && displayName) {
+        names[email] = displayName;
+      }
+      return names;
+    }, {});
+}
+
+function titleCaseName(value) {
+  return value
+    .split(/[\s._-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function getDisplayName(email) {
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  if (ALLOWED_USER_DISPLAY_NAMES[normalizedEmail]) {
+    return ALLOWED_USER_DISPLAY_NAMES[normalizedEmail];
+  }
+
+  return titleCaseName(normalizedEmail.split("@")[0] || "User");
 }
 
 async function parseBody(req) {
@@ -220,12 +299,21 @@ function validateTicket(ticket) {
     return `Only @${ALLOWED_EMAIL_DOMAIN} email addresses are allowed`;
   }
 
+  if (!isAllowedUser(ticket.email)) {
+    return "This email is not on the allowed user list";
+  }
+
   const validPriorities = new Set(["low", "medium", "high", "critical"]);
   if (!validPriorities.has(ticket.priority.toLowerCase())) {
     return "priority must be one of: low, medium, high, critical";
   }
 
   return null;
+}
+
+function validateStatus(status) {
+  const validStatuses = new Set(["open", "in progress", "resolved", "closed"]);
+  return validStatuses.has(status) ? null : "status must be one of: open, in progress, resolved, closed";
 }
 
 function safeJoin(base, target) {
@@ -267,8 +355,26 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && req.url === "/api/config") {
       sendJson(res, 200, {
         allowedEmailDomain: ALLOWED_EMAIL_DOMAIN,
+        allowedUserListEnabled: ALLOWED_USER_EMAILS.length > 0,
         adminTokenEnabled: Boolean(ADMIN_TOKEN),
       });
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/api/identity") {
+      const payload = await parseBody(req);
+      const email = String(payload.email || "").trim().toLowerCase();
+      if (!isAllowedEmail(email)) {
+        sendJson(res, 400, { error: `Only @${ALLOWED_EMAIL_DOMAIN} email addresses are allowed` });
+        return;
+      }
+
+      if (!isAllowedUser(email)) {
+        sendJson(res, 403, { error: "This email is not on the allowed user list" });
+        return;
+      }
+
+      sendJson(res, 200, { ok: true, email, displayName: getDisplayName(email) });
       return;
     }
 
@@ -296,6 +402,31 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    const statusMatch = req.url.match(/^\/api\/tickets\/([^/]+)\/status$/);
+    if (req.method === "PATCH" && statusMatch) {
+      if (!requireAdminToken(req)) {
+        sendJson(res, 401, { error: "Unauthorized. Supply x-admin-token header." });
+        return;
+      }
+
+      const payload = await parseBody(req);
+      const status = String(payload.status || "").trim().toLowerCase();
+      const validationError = validateStatus(status);
+      if (validationError) {
+        sendJson(res, 400, { error: validationError });
+        return;
+      }
+
+      const updated = await updateTicketStatus(decodeURIComponent(statusMatch[1]), status);
+      if (updated === false) {
+        sendJson(res, 404, { error: "Ticket not found" });
+        return;
+      }
+
+      sendJson(res, 200, { ok: true, status });
+      return;
+    }
+
     await serveStatic(req, res);
   } catch (error) {
     sendJson(res, 500, { error: "Internal server error", details: error.message });
@@ -305,6 +436,7 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, () => {
   console.log(`IT support ticket app running on http://localhost:${PORT}`);
   console.log(`Allowed email domain: @${ALLOWED_EMAIL_DOMAIN}`);
+  console.log(`Allowed user list: ${ALLOWED_USER_EMAILS.length ? `${ALLOWED_USER_EMAILS.length} email(s)` : "domain-only mode"}`);
   console.log(`Storage mode: ${USE_SUPABASE ? `Supabase (${SUPABASE_TICKETS_TABLE})` : "Local JSON file"}`);
   if (!ADMIN_TOKEN) {
     console.log("ADMIN_TOKEN is not set. /api/tickets is publicly readable.");

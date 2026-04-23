@@ -18,20 +18,33 @@
         </div>
 
         <h1>IT Support Request</h1>
-        <p class="muted">
-          Submit a ticket and you will receive support as soon as possible.
-        </p>
-        <p id="domain-note" class="note">Loading allowed email domain...</p>
+        <!-- <p class="muted">
+          First verify your work email, then submit your IT support request.
+        </p> -->
+        <form id="identity-form" class="identity-form">
+          <label>
+            Work email
+            <input type="email" name="email" id="identity-email-input" required />
+          </label>
 
-        <form id="ticket-form">
+          <button type="submit">Go ahead</button>
+          <p id="identity-message" class="message" aria-live="polite"></p>
+        </form>
+
+        <div id="verified-panel" class="verified-panel hidden">
+          <strong id="verified-greeting"></strong>
+          <button type="button" id="change-email-button" class="secondary-button">Change email</button>
+        </div>
+
+        <form id="ticket-form" class="hidden">
           <label>
             Full name
             <input type="text" name="name" required />
           </label>
 
           <label>
-            Work email
-            <input type="email" name="email" id="email-input" required />
+            Verified work email
+            <input type="email" name="email" id="email-input" required readonly />
           </label>
 
           <label>
