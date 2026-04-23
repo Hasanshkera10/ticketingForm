@@ -53,3 +53,5 @@ Set these keys in `.env`:
 ## Admin dashboard
 
 Open `/admin.html`, enter the value of `ADMIN_TOKEN`, then load submitted tickets. The dashboard supports search, priority/status filters, refresh, and CSV export.
+
+Will be enhanced later
